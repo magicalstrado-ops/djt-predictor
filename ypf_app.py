@@ -514,6 +514,8 @@ with st.sidebar:
         opciones = [f"{s[0]} — {s[1]}" for s in sugerencias]
         elegido = st.selectbox("Seleccionar:", opciones, label_visibility="collapsed", key="sel_ac")
         if elegido:
+            if st.session_state.get("ticker_sel") != elegido.split(" — ")[0]:
+                st.session_state.correr = False
             st.session_state.ticker_sel = elegido.split(" — ")[0]
     elif query and len(query) >= 1 and not sugerencias:
         st.markdown("<div class='ac-contenedor'><div class='ac-vacio'>Sin resultados — se usará el símbolo tal cual</div></div>", unsafe_allow_html=True)
@@ -544,7 +546,9 @@ with st.sidebar:
     st.markdown("<hr style='border:none;border-top:1px solid #162035;margin:16px 0;'>", unsafe_allow_html=True)
     enviar_telegram = st.checkbox("Enviar alerta por Telegram", value=True)
     st.markdown("<div style='margin-top:16px;'>", unsafe_allow_html=True)
-    correr = st.button("◈  EJECUTAR ANÁLISIS")
+    if st.button("◈  EJECUTAR ANÁLISIS"):
+        st.session_state.correr = True
+    correr = st.session_state.get("correr", False)
     st.markdown("""</div>
     <div style='font-family:JetBrains Mono,monospace;font-size:0.5rem;color:#1a2a3a;letter-spacing:0.08em;margin-top:28px;line-height:2;'>
     SOLO USO INTERNO<br>NO ES CONSEJO FINANCIERO<br>© DJT CAPITAL MANAGEMENT
