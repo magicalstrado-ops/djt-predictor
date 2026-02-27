@@ -965,145 +965,6 @@ guardar_prediccion({
     "acierto":              "",
 })
 
-# ── PANEL DE HISTORIAL ────────────────────────────────────────────────────────
-st.markdown("<hr class='separador'>", unsafe_allow_html=True)
-
-@st.fragment
-def panel_historial():
-    st.markdown("<div class='etiqueta-seccion'>HISTORIAL DE PREDICCIONES  ·  SEGUIMIENTO DE ACIERTOS</div>", unsafe_allow_html=True)
-
-    st.markdown("""<style>
-    @keyframes fadeSlideOut {
-        0%   { opacity:1; transform:translateX(0)   scaleY(1);   max-height:60px; }
-        40%  { opacity:0; transform:translateX(40px) scaleY(0.5); background:rgba(240,75,106,0.18); }
-        100% { opacity:0; transform:translateX(60px) scaleY(0);   max-height:0; margin:0; padding:0; }
-    }
-    @keyframes fadeIn {
-        from { opacity:0; transform:translateY(-6px); }
-        to   { opacity:1; transform:translateY(0); }
-    }
-    .fila-hist { animation: fadeIn 0.25s ease forwards; transition: background 0.2s; }
-    .fila-hist:hover { background: rgba(58,82,112,0.18) !important; }
-    .fila-borrando { animation: fadeSlideOut 0.45s ease forwards !important; pointer-events: none; }
-    div[data-testid="stHorizontalBlock"] .stButton button { min-height: 32px !important; height: 32px !important; }
-    .hdr { font-family:'JetBrains Mono',monospace; font-size:0.6rem; color:#2a4060;
-           letter-spacing:0.12em; text-transform:uppercase; padding:4px 0 8px 0; }
-    .hcel { font-family:'JetBrains Mono',monospace; font-size:0.7rem; padding:7px 0; line-height:1.4; }
-    .btn-del button {
-        background: rgba(240,75,106,0.08) !important;
-        border: 1px solid rgba(240,75,106,0.25) !important;
-        color: #f04b6a !important; font-size: 0.75rem !important; transition: all 0.15s !important;
-    }
-    .btn-del button:hover { background: rgba(240,75,106,0.25) !important; border-color: #f04b6a !important; transform: scale(1.15) !important; }
-    </style>""", unsafe_allow_html=True)
-
-    if "hist_pagina"  not in st.session_state: st.session_state.hist_pagina  = 1
-    if "eliminar_idx" not in st.session_state: st.session_state.eliminar_idx = None
-
-    _df_hist = cargar_historial()
-    _df_hist = actualizar_resultados_reales(_df_hist)
-
-    if st.session_state.eliminar_idx is not None:
-        _n = len(_df_hist)
-        _real_idx = _n - 1 - st.session_state.eliminar_idx
-        if 0 <= _real_idx < _n:
-            _df_hist = _df_hist.drop(index=_real_idx).reset_index(drop=True)
-            _df_hist.to_csv(HISTORIAL_CSV, index=False)
-        st.session_state.eliminar_idx = None
-        _POR_P_tmp = 10
-        _nt = max(1, (len(_df_hist) + _POR_P_tmp - 1) // _POR_P_tmp)
-        if st.session_state.hist_pagina > _nt: st.session_state.hist_pagina = _nt
-        st.rerun(scope="fragment")
-
-    if _df_hist.empty:
-        st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:0.68rem;color:#3d5a80;padding:20px;text-align:center;'>No hay predicciones guardadas aún.</div>", unsafe_allow_html=True)
-        return
-
-    _df_con_resultado = _df_hist[_df_hist["acierto"].isin(["✅","❌"])]
-    _total_pred   = len(_df_hist)
-    _con_res      = len(_df_con_resultado)
-    _aciertos     = (_df_con_resultado["acierto"] == "✅").sum()
-    _tasa_acierto = f"{_aciertos/_con_res*100:.1f}%" if _con_res > 0 else "—"
-    _error_prom   = _df_con_resultado["error_real_usd"].apply(pd.to_numeric, errors="coerce").mean()
-    _error_prom_s = f"${_error_prom:.4f}" if pd.notna(_error_prom) else "—"
-
-    hc1,hc2,hc3,hc4 = st.columns(4)
-    with hc1: st.markdown(f"<div class='hist-stat'><div class='hist-stat-val'>{_total_pred}</div><div class='hist-stat-lbl'>Total predicciones</div></div>", unsafe_allow_html=True)
-    with hc2: st.markdown(f"<div class='hist-stat'><div class='hist-stat-val'>{_con_res}</div><div class='hist-stat-lbl'>Con resultado real</div></div>", unsafe_allow_html=True)
-    _color_tasa = 'var(--verde)' if _con_res > 0 and _aciertos / _con_res >= 0.5 else 'var(--rojo)'
-    with hc3: st.markdown(f"<div class='hist-stat'><div class='hist-stat-val' style='color:{_color_tasa};'>{_tasa_acierto}</div><div class='hist-stat-lbl'>Tasa de acierto</div></div>", unsafe_allow_html=True)
-    with hc4: st.markdown(f"<div class='hist-stat'><div class='hist-stat-val'>{_error_prom_s}</div><div class='hist-stat-lbl'>Error promedio real</div></div>", unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    _POR_PAGINA = 10
-    _df_inv     = _df_hist.iloc[::-1].reset_index(drop=True)
-    _total_pags = max(1, (len(_df_inv) + _POR_PAGINA - 1) // _POR_PAGINA)
-    _pag        = min(st.session_state.hist_pagina, _total_pags)
-    _df_page    = _df_inv.iloc[(_pag-1)*_POR_PAGINA : _pag*_POR_PAGINA]
-
-    C = [1.9, 0.85, 0.7, 1.05, 1.05, 0.95, 1.55, 1.05, 1.0, 0.45]
-    H = ["FECHA","TICKER","MKT","ACTUAL","OBJETIVO","VAR%","RANGO","PRECIO REAL","ACIERTO",""]
-    cols = st.columns(C)
-    for col, h in zip(cols, H):
-        col.markdown(f"<div class='hdr'>{h}</div>", unsafe_allow_html=True)
-    st.markdown("<div style='height:1px;background:#0d1626;margin-bottom:4px;'></div>", unsafe_allow_html=True)
-
-    for i, (_, row) in enumerate(_df_page.iterrows()):
-        _inv_pos = (_pag-1)*_POR_PAGINA + i
-        _var_pct = float(row["variacion_pct"]) if str(row["variacion_pct"]) not in ["","nan"] else 0
-        _var_col = "#05d890" if _var_pct > 0 else "#f04b6a"
-        _mkt_col = "#c9a84c" if str(row["mercado"]) == "ARG" else "#3b82f6"
-        _pr_s    = f"${float(row['precio_real_siguiente']):.2f}" if str(row['precio_real_siguiente']) not in ["","nan","None"] else "—"
-        _rg_s    = f"${float(row['rango_min']):.2f}–{float(row['rango_max']):.2f}" if str(row['rango_min']) not in ["","nan","None"] else "—"
-        _fe_s    = str(row['fecha'])[:16]
-        if   row["acierto"] == "✅": _ac_s, _ac_c = "✅", "#05d890"
-        elif row["acierto"] == "❌": _ac_s, _ac_c = "❌", "#f04b6a"
-        else:                         _ac_s, _ac_c = "pendiente", "#3d5a80"
-
-        _bg = "rgba(240,75,106,0.10)" if st.session_state.get("eliminar_idx")==_inv_pos else ("rgba(12,22,42,0.6)" if i%2==0 else "rgba(8,14,28,0.4)")
-        _clase = "fila-borrando" if st.session_state.get("eliminar_idx")==_inv_pos else "fila-hist"
-
-        st.markdown(f"<div class='{_clase}' style='background:{_bg};border-radius:2px;margin-bottom:1px;'>", unsafe_allow_html=True)
-        cols = st.columns(C)
-        cols[0].markdown(f"<div class='hcel' style='color:#4a6080;'>{_fe_s}</div>", unsafe_allow_html=True)
-        cols[1].markdown(f"<div class='hcel' style='color:#7cb9e8;font-weight:700;'>{row['ticker']}</div>", unsafe_allow_html=True)
-        cols[2].markdown(f"<div class='hcel' style='color:{_mkt_col};font-weight:600;'>{row['mercado']}</div>", unsafe_allow_html=True)
-        cols[3].markdown(f"<div class='hcel' style='color:#c8d8e8;'>${float(row['precio_actual']):.2f}</div>", unsafe_allow_html=True)
-        cols[4].markdown(f"<div class='hcel' style='color:#c8d8e8;'>${float(row['precio_objetivo']):.2f}</div>", unsafe_allow_html=True)
-        cols[5].markdown(f"<div class='hcel' style='color:{_var_col};font-weight:700;'>{_var_pct:+.2f}%</div>", unsafe_allow_html=True)
-        cols[6].markdown(f"<div class='hcel' style='color:#3a5270;font-size:0.64rem;'>{_rg_s}</div>", unsafe_allow_html=True)
-        cols[7].markdown(f"<div class='hcel' style='color:#c8d8e8;'>{_pr_s}</div>", unsafe_allow_html=True)
-        cols[8].markdown(f"<div class='hcel' style='color:{_ac_c};'>{_ac_s}</div>", unsafe_allow_html=True)
-        with cols[9]:
-            st.markdown("<div class='btn-del'>", unsafe_allow_html=True)
-            if st.button("✕", key=f"d_{_inv_pos}", help="Eliminar esta predicción"):
-                st.session_state.eliminar_idx = _inv_pos
-                st.rerun(scope="fragment")
-            st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("<div style='height:1px;background:#080e1a;'></div>", unsafe_allow_html=True)
-
-    if _total_pags > 1:
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown(f"<div style='font-family:JetBrains Mono,monospace;font-size:0.6rem;color:#2a4060;margin-bottom:6px;'>PÁGINA {_pag} DE {_total_pags}</div>", unsafe_allow_html=True)
-        pag_cols = st.columns([1] * _total_pags)
-        for p in range(1, _total_pags+1):
-            with pag_cols[p-1]:
-                if st.button(f"**{p}**" if p==_pag else str(p), key=f"pag_{p}"):
-                    st.session_state.hist_pagina = p
-                    st.rerun(scope="fragment")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.download_button(
-        label="⬇  Descargar historial completo (CSV)",
-        data=_df_hist.to_csv(index=False).encode("utf-8"),
-        file_name=f"historial_djt_capital_{datetime.date.today()}.csv",
-        mime="text/csv",
-    )
-
-panel_historial()
-
-# ── MÓDULO DE INTELIGENCIA AVANZADA ──────────────────────────
 st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
 with st.expander("◈  INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY · CORRELACIONES MACRO", expanded=False):
@@ -1519,3 +1380,141 @@ with st.expander("◈  INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY 
         letter-spacing:0.08em;text-align:center;padding:10px 0;'>
         VOLUME PROFILE: ÚLTIMOS 252 DÍAS · SMART MONEY: σ > 2.5 SOBRE MEDIA 20D · CORRELACIONES: ROLLING 60 DÍAS
     </div>""", unsafe_allow_html=True)
+# ── PANEL DE HISTORIAL ────────────────────────────────────────────────────────
+st.markdown("<hr class='separador'>", unsafe_allow_html=True)
+
+@st.fragment
+def panel_historial():
+    st.markdown("<div class='etiqueta-seccion'>HISTORIAL DE PREDICCIONES  ·  SEGUIMIENTO DE ACIERTOS</div>", unsafe_allow_html=True)
+
+    st.markdown("""<style>
+    @keyframes fadeSlideOut {
+        0%   { opacity:1; transform:translateX(0)   scaleY(1);   max-height:60px; }
+        40%  { opacity:0; transform:translateX(40px) scaleY(0.5); background:rgba(240,75,106,0.18); }
+        100% { opacity:0; transform:translateX(60px) scaleY(0);   max-height:0; margin:0; padding:0; }
+    }
+    @keyframes fadeIn {
+        from { opacity:0; transform:translateY(-6px); }
+        to   { opacity:1; transform:translateY(0); }
+    }
+    .fila-hist { animation: fadeIn 0.25s ease forwards; transition: background 0.2s; }
+    .fila-hist:hover { background: rgba(58,82,112,0.18) !important; }
+    .fila-borrando { animation: fadeSlideOut 0.45s ease forwards !important; pointer-events: none; }
+    div[data-testid="stHorizontalBlock"] .stButton button { min-height: 32px !important; height: 32px !important; }
+    .hdr { font-family:'JetBrains Mono',monospace; font-size:0.6rem; color:#2a4060;
+           letter-spacing:0.12em; text-transform:uppercase; padding:4px 0 8px 0; }
+    .hcel { font-family:'JetBrains Mono',monospace; font-size:0.7rem; padding:7px 0; line-height:1.4; }
+    .btn-del button {
+        background: rgba(240,75,106,0.08) !important;
+        border: 1px solid rgba(240,75,106,0.25) !important;
+        color: #f04b6a !important; font-size: 0.75rem !important; transition: all 0.15s !important;
+    }
+    .btn-del button:hover { background: rgba(240,75,106,0.25) !important; border-color: #f04b6a !important; transform: scale(1.15) !important; }
+    </style>""", unsafe_allow_html=True)
+
+    if "hist_pagina"  not in st.session_state: st.session_state.hist_pagina  = 1
+    if "eliminar_idx" not in st.session_state: st.session_state.eliminar_idx = None
+
+    _df_hist = cargar_historial()
+    _df_hist = actualizar_resultados_reales(_df_hist)
+
+    if st.session_state.eliminar_idx is not None:
+        _n = len(_df_hist)
+        _real_idx = _n - 1 - st.session_state.eliminar_idx
+        if 0 <= _real_idx < _n:
+            _df_hist = _df_hist.drop(index=_real_idx).reset_index(drop=True)
+            _df_hist.to_csv(HISTORIAL_CSV, index=False)
+        st.session_state.eliminar_idx = None
+        _POR_P_tmp = 10
+        _nt = max(1, (len(_df_hist) + _POR_P_tmp - 1) // _POR_P_tmp)
+        if st.session_state.hist_pagina > _nt: st.session_state.hist_pagina = _nt
+        st.rerun(scope="fragment")
+
+    if _df_hist.empty:
+        st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:0.68rem;color:#3d5a80;padding:20px;text-align:center;'>No hay predicciones guardadas aún.</div>", unsafe_allow_html=True)
+        return
+
+    _df_con_resultado = _df_hist[_df_hist["acierto"].isin(["✅","❌"])]
+    _total_pred   = len(_df_hist)
+    _con_res      = len(_df_con_resultado)
+    _aciertos     = (_df_con_resultado["acierto"] == "✅").sum()
+    _tasa_acierto = f"{_aciertos/_con_res*100:.1f}%" if _con_res > 0 else "—"
+    _error_prom   = _df_con_resultado["error_real_usd"].apply(pd.to_numeric, errors="coerce").mean()
+    _error_prom_s = f"${_error_prom:.4f}" if pd.notna(_error_prom) else "—"
+
+    hc1,hc2,hc3,hc4 = st.columns(4)
+    with hc1: st.markdown(f"<div class='hist-stat'><div class='hist-stat-val'>{_total_pred}</div><div class='hist-stat-lbl'>Total predicciones</div></div>", unsafe_allow_html=True)
+    with hc2: st.markdown(f"<div class='hist-stat'><div class='hist-stat-val'>{_con_res}</div><div class='hist-stat-lbl'>Con resultado real</div></div>", unsafe_allow_html=True)
+    _color_tasa = 'var(--verde)' if _con_res > 0 and _aciertos / _con_res >= 0.5 else 'var(--rojo)'
+    with hc3: st.markdown(f"<div class='hist-stat'><div class='hist-stat-val' style='color:{_color_tasa};'>{_tasa_acierto}</div><div class='hist-stat-lbl'>Tasa de acierto</div></div>", unsafe_allow_html=True)
+    with hc4: st.markdown(f"<div class='hist-stat'><div class='hist-stat-val'>{_error_prom_s}</div><div class='hist-stat-lbl'>Error promedio real</div></div>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    _POR_PAGINA = 10
+    _df_inv     = _df_hist.iloc[::-1].reset_index(drop=True)
+    _total_pags = max(1, (len(_df_inv) + _POR_PAGINA - 1) // _POR_PAGINA)
+    _pag        = min(st.session_state.hist_pagina, _total_pags)
+    _df_page    = _df_inv.iloc[(_pag-1)*_POR_PAGINA : _pag*_POR_PAGINA]
+
+    C = [1.9, 0.85, 0.7, 1.05, 1.05, 0.95, 1.55, 1.05, 1.0, 0.45]
+    H = ["FECHA","TICKER","MKT","ACTUAL","OBJETIVO","VAR%","RANGO","PRECIO REAL","ACIERTO",""]
+    cols = st.columns(C)
+    for col, h in zip(cols, H):
+        col.markdown(f"<div class='hdr'>{h}</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:1px;background:#0d1626;margin-bottom:4px;'></div>", unsafe_allow_html=True)
+
+    for i, (_, row) in enumerate(_df_page.iterrows()):
+        _inv_pos = (_pag-1)*_POR_PAGINA + i
+        _var_pct = float(row["variacion_pct"]) if str(row["variacion_pct"]) not in ["","nan"] else 0
+        _var_col = "#05d890" if _var_pct > 0 else "#f04b6a"
+        _mkt_col = "#c9a84c" if str(row["mercado"]) == "ARG" else "#3b82f6"
+        _pr_s    = f"${float(row['precio_real_siguiente']):.2f}" if str(row['precio_real_siguiente']) not in ["","nan","None"] else "—"
+        _rg_s    = f"${float(row['rango_min']):.2f}–{float(row['rango_max']):.2f}" if str(row['rango_min']) not in ["","nan","None"] else "—"
+        _fe_s    = str(row['fecha'])[:16]
+        if   row["acierto"] == "✅": _ac_s, _ac_c = "✅", "#05d890"
+        elif row["acierto"] == "❌": _ac_s, _ac_c = "❌", "#f04b6a"
+        else:                         _ac_s, _ac_c = "pendiente", "#3d5a80"
+
+        _bg = "rgba(240,75,106,0.10)" if st.session_state.get("eliminar_idx")==_inv_pos else ("rgba(12,22,42,0.6)" if i%2==0 else "rgba(8,14,28,0.4)")
+        _clase = "fila-borrando" if st.session_state.get("eliminar_idx")==_inv_pos else "fila-hist"
+
+        st.markdown(f"<div class='{_clase}' style='background:{_bg};border-radius:2px;margin-bottom:1px;'>", unsafe_allow_html=True)
+        cols = st.columns(C)
+        cols[0].markdown(f"<div class='hcel' style='color:#4a6080;'>{_fe_s}</div>", unsafe_allow_html=True)
+        cols[1].markdown(f"<div class='hcel' style='color:#7cb9e8;font-weight:700;'>{row['ticker']}</div>", unsafe_allow_html=True)
+        cols[2].markdown(f"<div class='hcel' style='color:{_mkt_col};font-weight:600;'>{row['mercado']}</div>", unsafe_allow_html=True)
+        cols[3].markdown(f"<div class='hcel' style='color:#c8d8e8;'>${float(row['precio_actual']):.2f}</div>", unsafe_allow_html=True)
+        cols[4].markdown(f"<div class='hcel' style='color:#c8d8e8;'>${float(row['precio_objetivo']):.2f}</div>", unsafe_allow_html=True)
+        cols[5].markdown(f"<div class='hcel' style='color:{_var_col};font-weight:700;'>{_var_pct:+.2f}%</div>", unsafe_allow_html=True)
+        cols[6].markdown(f"<div class='hcel' style='color:#3a5270;font-size:0.64rem;'>{_rg_s}</div>", unsafe_allow_html=True)
+        cols[7].markdown(f"<div class='hcel' style='color:#c8d8e8;'>{_pr_s}</div>", unsafe_allow_html=True)
+        cols[8].markdown(f"<div class='hcel' style='color:{_ac_c};'>{_ac_s}</div>", unsafe_allow_html=True)
+        with cols[9]:
+            st.markdown("<div class='btn-del'>", unsafe_allow_html=True)
+            if st.button("✕", key=f"d_{_inv_pos}", help="Eliminar esta predicción"):
+                st.session_state.eliminar_idx = _inv_pos
+                st.rerun(scope="fragment")
+            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:1px;background:#080e1a;'></div>", unsafe_allow_html=True)
+
+    if _total_pags > 1:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-family:JetBrains Mono,monospace;font-size:0.6rem;color:#2a4060;margin-bottom:6px;'>PÁGINA {_pag} DE {_total_pags}</div>", unsafe_allow_html=True)
+        pag_cols = st.columns([1] * _total_pags)
+        for p in range(1, _total_pags+1):
+            with pag_cols[p-1]:
+                if st.button(f"**{p}**" if p==_pag else str(p), key=f"pag_{p}"):
+                    st.session_state.hist_pagina = p
+                    st.rerun(scope="fragment")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.download_button(
+        label="⬇  Descargar historial completo (CSV)",
+        data=_df_hist.to_csv(index=False).encode("utf-8"),
+        file_name=f"historial_djt_capital_{datetime.date.today()}.csv",
+        mime="text/csv",
+    )
+
+panel_historial()
+
