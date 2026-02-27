@@ -972,6 +972,7 @@ guardar_prediccion({
 st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
 with st.expander("◈  INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY · CORRELACIONES MACRO", expanded=True):
+    st.write("🔬 Módulo cargando...")
 
     st.markdown("""<style>
     /* ── EXPANDER PERSONALIZADO ── */
