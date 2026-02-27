@@ -1035,7 +1035,6 @@ with st.expander("◈  INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY 
     .ley-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; vertical-align:middle; }
     </style>""", unsafe_allow_html=True)
 
-    try:
     # ─────────────────────────────────────────────────────────────
     # 1. VOLUME PROFILE
     # ─────────────────────────────────────────────────────────────
@@ -1385,8 +1384,6 @@ with st.expander("◈  INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY 
         letter-spacing:0.08em;text-align:center;padding:10px 0;'>
         VOLUME PROFILE: ÚLTIMOS 252 DÍAS · SMART MONEY: σ > 2.5 SOBRE MEDIA 20D · CORRELACIONES: ROLLING 60 DÍAS
     </div>""", unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"Error en módulo avanzado: {e}")
 # ── PANEL DE HISTORIAL ────────────────────────────────────────────────────────
 st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
