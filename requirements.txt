@@ -1,4 +1,9 @@
+streamlit 
 yfinance 
 pandas 
+numpy 
 plotly 
 scikit-learn 
+xgboost 
+lightgbm 
+requests 
