@@ -903,7 +903,7 @@ for i in range(1,5):
     fig.update_xaxes(gridcolor='#0d1626',showgrid=True,row=i,col=1,zeroline=False)
     fig.update_yaxes(gridcolor='#0d1626',showgrid=True,row=i,col=1,zeroline=False)
 
-st.plotly_chart(fig,use_container_width=True)
+st.plotly_chart(fig,width="stretch")
 
 # ── TABLA MODELOS ─────────────────────────────────────────────────────────────
 st.markdown("<hr class='separador'>", unsafe_allow_html=True)
@@ -1266,7 +1266,7 @@ try:
         legend=dict(bgcolor='rgba(6,13,26,0.9)', bordercolor='#162035', borderwidth=1, font=dict(size=9)),
         xaxis=dict(gridcolor='#0d1626'), yaxis=dict(gridcolor='#0d1626')
     )
-    st.plotly_chart(fig_sm, use_container_width=True)
+    st.plotly_chart(fig_sm, width="stretch")
 
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
@@ -1388,7 +1388,7 @@ try:
         legend=dict(bgcolor='rgba(6,13,26,0.9)', bordercolor='#162035', borderwidth=1, font=dict(size=9)),
         title=dict(text=f'Correlación Rolling 60d — {ticker}', font=dict(size=11, color='#3d5a80'), x=0)
     )
-    st.plotly_chart(fig_corr, use_container_width=True)
+    st.plotly_chart(fig_corr, width="stretch")
 
     st.markdown("""<div style='font-family:JetBrains Mono,monospace;font-size:0.52rem;color:#1a2a3a;
         letter-spacing:0.08em;text-align:center;padding:10px 0;'>
