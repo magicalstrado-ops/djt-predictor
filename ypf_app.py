@@ -1272,14 +1272,15 @@ try:
 
     # Gráfico de volumen con marcas de whale
     fig_sm = go.Figure()
+    # Usar el rango completo del dataset para que las barras y diamonds coincidan
     colores_vol = ['rgba(5,216,144,0.5)' if c > o else 'rgba(244,63,94,0.5)'
-                   for c, o in zip(df_sm['close'].tail(120), df_sm['open'].tail(120))]
+                   for c, o in zip(df_sm['close'], df_sm['open'])]
     fig_sm.add_trace(go.Bar(
-        x=df_sm.index[-120:], y=df_sm['volume'].tail(120),
+        x=df_sm.index, y=df_sm['volume'],
         marker_color=colores_vol, name='Volumen', opacity=0.7
     ))
-    # Marcar whales en el gráfico
-    whale_idx_graf = df_sm[df_sm['vol_zscore'] > 2.5].tail(120)
+    # Marcar whales - filtrar por el mismo índice que las barras
+    whale_idx_graf = df_sm[df_sm['vol_zscore'] > 2.5]
     if len(whale_idx_graf) > 0:
         fig_sm.add_trace(go.Scatter(
             x=whale_idx_graf.index, y=whale_idx_graf['volume'],
@@ -1288,7 +1289,7 @@ try:
                        line=dict(color='#f59e0b', width=1))
         ))
     fig_sm.add_trace(go.Scatter(
-        x=df_sm.index[-120:], y=vol_media.tail(120)*2,
+        x=df_sm.index, y=vol_media*2,
         name='2× Media', line=dict(color='rgba(244,63,94,0.5)', dash='dot', width=1)
     ))
     fig_sm.update_layout(
@@ -1298,7 +1299,7 @@ try:
         legend=dict(bgcolor='rgba(6,13,26,0.9)', bordercolor='#162035', borderwidth=1, font=dict(size=9)),
         xaxis=dict(gridcolor='#0d1626'), yaxis=dict(gridcolor='#0d1626')
     )
-    st.plotly_chart(fig_sm, width="stretch")
+    st.plotly_chart(fig_sm, use_container_width=True)
 
     st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
