@@ -907,6 +907,7 @@ st.plotly_chart(fig,use_container_width=True)
 
 # ── TABLA MODELOS ─────────────────────────────────────────────────────────────
 st.markdown("<hr class='separador'>", unsafe_allow_html=True)
+st.info("⚡ VERSIÓN NUEVA ACTIVA — v2026-02-28")
 st.markdown("<div class='etiqueta-seccion'>RENDIMIENTO DEL ENSAMBLE DE MODELOS</div>", unsafe_allow_html=True)
 
 filas  = "<div class='tabla-modelos'>"
