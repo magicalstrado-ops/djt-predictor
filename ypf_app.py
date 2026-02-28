@@ -762,6 +762,10 @@ def panel_screener():
         st.session_state.screener_results = None
     if "screener_tab" not in st.session_state:
         st.session_state.screener_tab = "ARG"
+    if "screener_ultimo_cierre" not in st.session_state:
+        st.session_state.screener_ultimo_cierre = None
+    if "screener_prediccion_para" not in st.session_state:
+        st.session_state.screener_prediccion_para = None
 
     col_btn1, col_btn2, col_btn3, _ = st.columns([1,1,1,3])
     with col_btn1:
@@ -798,10 +802,56 @@ def panel_screener():
         resultados.sort(key=lambda x: x['var'], reverse=True)
         st.session_state.screener_results = resultados
 
+        # Guardar fecha del último cierre usado por el modelo
+        try:
+            primer_sym = tickers_a_analizar[0]
+            ultimo_cierre = raw_data[primer_sym]['Close'].dropna().index[-1]
+            st.session_state.screener_ultimo_cierre = ultimo_cierre
+            # Calcular próximo día hábil
+            siguiente = ultimo_cierre + pd.tseries.offsets.BDay(1)
+            st.session_state.screener_prediccion_para = siguiente
+        except:
+            st.session_state.screener_ultimo_cierre = None
+            st.session_state.screener_prediccion_para = None
+
     if st.session_state.screener_results:
         res = st.session_state.screener_results
         compras  = [r for r in res if r['clase'] in ('cf','c')]
         ventas   = [r for r in res if r['clase'] in ('vf','v')]
+
+        # Banner de fechas — SIEMPRE visible arriba de los KPIs
+        ult_c = st.session_state.get("screener_ultimo_cierre")
+        pred_p = st.session_state.get("screener_prediccion_para")
+        if ult_c is not None and pred_p is not None:
+            ult_str  = pd.Timestamp(ult_c).strftime("%d %b %Y")
+            pred_str = pd.Timestamp(pred_p).strftime("%d %b %Y")
+            hoy = pd.Timestamp(datetime.date.today())
+            # Alerta si el último cierre es de hoy o ayer tarde (modelo puede estar prediciendo algo ya ocurrido)
+            dias_diff = (hoy - pd.Timestamp(ult_c)).days
+            if dias_diff == 0:
+                alerta_color = "#f59e0b"
+                alerta_txt = "⚠ CIERRE DE HOY — ejecutá mañana antes de apertura para predicción válida"
+            else:
+                alerta_color = "#05d890"
+                alerta_txt   = "✅ Predicción válida — datos consolidados"
+            st.markdown(f"""
+            <div style='display:flex;align-items:center;justify-content:space-between;
+                background:#050c1a;border:1px solid #162035;border-radius:3px;
+                padding:10px 18px;margin-bottom:14px;font-family:JetBrains Mono,monospace;'>
+                <div style='display:flex;gap:32px;align-items:center;'>
+                    <div>
+                        <div style='font-size:0.48rem;color:#1e3050;letter-spacing:0.2em;text-transform:uppercase;margin-bottom:3px;'>Último cierre utilizado</div>
+                        <div style='font-size:0.78rem;color:#c8d8e8;font-weight:600;'>{ult_str}</div>
+                    </div>
+                    <div style='color:#1e3050;font-size:1rem;'>→</div>
+                    <div>
+                        <div style='font-size:0.48rem;color:#1e3050;letter-spacing:0.2em;text-transform:uppercase;margin-bottom:3px;'>Predicción para</div>
+                        <div style='font-size:0.78rem;color:#f59e0b;font-weight:700;'>{pred_str}</div>
+                    </div>
+                </div>
+                <div style='font-size:0.52rem;color:{alerta_color};letter-spacing:0.08em;'>{alerta_txt}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
         # KPIs
         k1, k2, k3, k4 = st.columns(4)
