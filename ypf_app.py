@@ -956,7 +956,7 @@ st.markdown("<div class='aviso-legal'>ESTE MATERIAL ES PRODUCIDO POR DJT CAPITAL
 
 # ── GUARDAR PREDICCIÓN ────────────────────────────────────────────────────────
 # Guardar solo una vez por análisis (evita duplicados en reruns)
-_pred_key = f"{ticker}_{datetime.datetime.now().strftime('%Y-%m-%d')}"
+_pred_key = f"{ticker}_{datetime.datetime.now().strftime('%Y-%m-%d_%H')}_{datetime.datetime.now().minute // 10}"
 if st.session_state.get("ultima_pred_guardada") != _pred_key:
     st.session_state.ultima_pred_guardada = _pred_key
     guardar_prediccion({
@@ -978,7 +978,6 @@ if st.session_state.get("ultima_pred_guardada") != _pred_key:
 st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
 st.markdown("<div class='etiqueta-seccion'>◈ INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY · CORRELACIONES MACRO</div>", unsafe_allow_html=True)
-st.warning("🔬 MÓDULO AVANZADO: INICIANDO...")
 try:
 
     st.markdown("""<style>
@@ -1427,7 +1426,6 @@ try:
         letter-spacing:0.08em;text-align:center;padding:10px 0;'>
         VOLUME PROFILE: ÚLTIMOS 252 DÍAS · SMART MONEY: σ > 2.5 SOBRE MEDIA 20D · CORRELACIONES: ROLLING 60 DÍAS
     </div>""", unsafe_allow_html=True)
-    st.success("✅ MÓDULO AVANZADO COMPLETADO OK")
 except Exception as _adv_err:
     st.error(f"⚠ ERROR EN MÓDULO AVANZADO: {type(_adv_err).__name__}: {_adv_err}")
     import traceback
