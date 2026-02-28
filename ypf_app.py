@@ -953,26 +953,30 @@ if enviar_telegram:
 st.markdown("<div class='aviso-legal'>ESTE MATERIAL ES PRODUCIDO POR DJT CAPITAL MANAGEMENT PARA FINES INFORMATIVOS ÚNICAMENTE<br>NO CONSTITUYE ASESORAMIENTO DE INVERSIÓN NI UNA OFERTA DE COMPRA O VENTA DE VALORES · EL RENDIMIENTO PASADO NO GARANTIZA RESULTADOS FUTUROS</div>", unsafe_allow_html=True)
 
 # ── GUARDAR PREDICCIÓN ────────────────────────────────────────────────────────
-guardar_prediccion({
-    "fecha":                datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-    "ticker":               ticker,
-    "mercado":              "ARG" if modo_arg else "USA",
-    "precio_actual":        round(precio_hoy, 4),
-    "precio_objetivo":      round(pred_final, 4),
-    "variacion_pct":        round(variacion, 4),
-    "rango_min":            round(pred_final - mae_usd, 4),
-    "rango_max":            round(pred_final + mae_usd, 4),
-    "mae_usd":              round(mae_usd, 4),
-    "senal":                rec,
-    "precio_real_siguiente":"",
-    "error_real_usd":       "",
-    "acierto":              "",
-})
+# Guardar solo una vez por análisis (evita duplicados en reruns)
+_pred_key = f"{ticker}_{datetime.datetime.now().strftime('%Y-%m-%d')}"
+if st.session_state.get("ultima_pred_guardada") != _pred_key:
+    st.session_state.ultima_pred_guardada = _pred_key
+    guardar_prediccion({
+        "fecha":                datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "ticker":               ticker,
+        "mercado":              "ARG" if modo_arg else "USA",
+        "precio_actual":        round(precio_hoy, 4),
+        "precio_objetivo":      round(pred_final, 4),
+        "variacion_pct":        round(variacion, 4),
+        "rango_min":            round(pred_final - mae_usd, 4),
+        "rango_max":            round(pred_final + mae_usd, 4),
+        "mae_usd":              round(mae_usd, 4),
+        "senal":                rec,
+        "precio_real_siguiente":"",
+        "error_real_usd":       "",
+        "acierto":              "",
+    })
 
 st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
 with st.expander("◈  INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY · CORRELACIONES MACRO", expanded=True):
-    st.write("🔬 Módulo cargando...")
+  try:
 
     st.markdown("""<style>
     /* ── EXPANDER PERSONALIZADO ── */
@@ -1049,14 +1053,17 @@ with st.expander("◈  INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY 
     bins = np.linspace(precio_min, precio_max, N_BINS + 1)
     vol_por_bin = np.zeros(N_BINS)
 
-    for _, row_vp in df_vp.iterrows():
-        for b in range(N_BINS):
-            low_b, high_b = bins[b], bins[b+1]
-            overlap = max(0, min(row_vp['high'], high_b) - max(row_vp['low'], low_b))
-            rango_vela = row_vp['high'] - row_vp['low']
-            if rango_vela > 0:
-                frac = overlap / rango_vela
-                vol_por_bin[b] += row_vp['volume'] * frac
+    # Vectorizado con numpy (100x más rápido que iterrows)
+    highs  = df_vp['high'].values
+    lows   = df_vp['low'].values
+    vols   = df_vp['volume'].values
+    rangos = highs - lows
+    rangos = np.where(rangos > 0, rangos, 1e-9)  # evitar div/0
+    for b in range(N_BINS):
+        low_b, high_b = bins[b], bins[b+1]
+        overlaps = np.maximum(0, np.minimum(highs, high_b) - np.maximum(lows, low_b))
+        fracs = overlaps / rangos
+        vol_por_bin[b] = np.sum(vols * fracs)
 
     # POC, VAH, VAL
     poc_idx = np.argmax(vol_por_bin)
@@ -1385,6 +1392,9 @@ with st.expander("◈  INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY 
         letter-spacing:0.08em;text-align:center;padding:10px 0;'>
         VOLUME PROFILE: ÚLTIMOS 252 DÍAS · SMART MONEY: σ > 2.5 SOBRE MEDIA 20D · CORRELACIONES: ROLLING 60 DÍAS
     </div>""", unsafe_allow_html=True)
+  except Exception as _adv_err:
+    st.error(f"⚠ Error en módulo avanzado: {_adv_err}")
+    st.exception(_adv_err)
 # ── PANEL DE HISTORIAL ────────────────────────────────────────────────────────
 st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
