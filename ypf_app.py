@@ -975,8 +975,8 @@ if st.session_state.get("ultima_pred_guardada") != _pred_key:
 
 st.markdown("<hr class='separador'>", unsafe_allow_html=True)
 
-with st.expander("◈  INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY · CORRELACIONES MACRO", expanded=True):
-  try:
+st.markdown("<div class='etiqueta-seccion'>◈ INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY · CORRELACIONES MACRO</div>", unsafe_allow_html=True)
+try:
 
     st.markdown("""<style>
     /* ── EXPANDER PERSONALIZADO ── */
@@ -1392,7 +1392,7 @@ with st.expander("◈  INTELIGENCIA AVANZADA  ·  VOLUME PROFILE · SMART MONEY 
         letter-spacing:0.08em;text-align:center;padding:10px 0;'>
         VOLUME PROFILE: ÚLTIMOS 252 DÍAS · SMART MONEY: σ > 2.5 SOBRE MEDIA 20D · CORRELACIONES: ROLLING 60 DÍAS
     </div>""", unsafe_allow_html=True)
-  except Exception as _adv_err:
+except Exception as _adv_err:
     st.error(f"⚠ Error en módulo avanzado: {_adv_err}")
     st.exception(_adv_err)
 # ── PANEL DE HISTORIAL ────────────────────────────────────────────────────────
