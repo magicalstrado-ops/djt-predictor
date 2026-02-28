@@ -202,13 +202,41 @@ def _macro_screener():
         return None, None
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def _analizar_ticker_lite(sym):
+def _batch_download_screener(tab):
+    """Descarga TODOS los tickers del tab en UNA sola llamada para evitar rate limiting."""
+    tickers = list(TICKERS_ARG.keys()) if tab == "ARG" else list(TICKERS_USA.keys())
+    try:
+        raw = yf.download(tickers, period="1y", progress=False, group_by='ticker', threads=False)
+        return raw
+    except:
+        return None
+
+def _analizar_ticker_lite(sym, raw_data=None):
     """Modelo LightGBM lite sobre un ticker. Devuelve dict con señal o None."""
     try:
-        stock = yf.download(sym, period="1y", progress=False)
+        # Usa datos del batch si están disponibles (evita rate limiting)
+        if raw_data is not None:
+            try:
+                stock = raw_data[sym].copy()
+                stock.columns = [c.lower() for c in stock.columns]
+                stock = stock.dropna(how='all')
+            except (KeyError, TypeError):
+                return None
+        else:
+            stock = yf.download(sym, period="1y", progress=False)
+            if len(stock) < 80:
+                return None
+            stock.columns = [c[0].lower() if isinstance(c,tuple) else c.lower() for c in stock.columns]
+
+        # Validación anti-datos-corruptos: si todos los precios son iguales, descartar
         if len(stock) < 80:
             return None
-        stock.columns = [c[0].lower() if isinstance(c,tuple) else c.lower() for c in stock.columns]
+        if 'close' not in stock.columns:
+            return None
+        close_vals = stock['close'].dropna()
+        if len(close_vals) < 80 or close_vals.nunique() < 10:
+            return None
+
         wti_s, spy_s = _macro_screener()
         if wti_s is None:
             return None
@@ -717,7 +745,16 @@ def panel_screener():
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<div class='scr-titulo'>⚡ SCREENER GLOBAL  ·  SEÑALES IA MULTITICKER</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;'>
+        <div class='scr-titulo' style='margin-bottom:0;'>⚡ SCREENER GLOBAL &nbsp;·&nbsp; SEÑALES IA MULTITICKER</div>
+        <div style='font-family:JetBrains Mono,monospace;font-size:0.52rem;color:#3d5a80;letter-spacing:0.1em;
+            background:#090f1e;border:1px solid #162035;padding:4px 14px;border-radius:2px;'>
+            TEMPORALIDAD: <span style='color:#f59e0b;font-weight:600;'>DIARIA</span>
+            &nbsp;·&nbsp; SEÑAL PARA EL <span style='color:#f59e0b;font-weight:600;'>DÍA SIGUIENTE</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     if "run_screener" not in st.session_state:
         st.session_state.run_screener = False
@@ -741,22 +778,21 @@ def panel_screener():
 
     if ejecutar or st.session_state.run_screener:
         st.session_state.run_screener = False
-        prog_bar = st.progress(0, text="Iniciando screener...")
         resultados = []
         total = len(tickers_a_analizar)
 
-        import concurrent.futures
-        completados = [0]
+        # PASO 1: Descarga batch (una sola llamada a yfinance, sin rate limiting)
+        prog_bar = st.progress(0, text=f"⬇ Descargando {total} tickers en batch...")
+        raw_data = _batch_download_screener(tab_actual)
+        prog_bar.progress(0.3, text="✅ Descarga completa · Entrenando modelos...")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            futures = {executor.submit(_analizar_ticker_lite, sym): sym for sym in tickers_a_analizar}
-            for fut in concurrent.futures.as_completed(futures):
-                res = fut.result()
-                if res:
-                    resultados.append(res)
-                completados[0] += 1
-                prog_bar.progress(completados[0]/total,
-                    text=f"Analizando... {completados[0]}/{total} tickers")
+        # PASO 2: Procesar cada ticker con los datos ya descargados
+        for i, sym in enumerate(tickers_a_analizar):
+            res = _analizar_ticker_lite(sym, raw_data=raw_data)
+            if res:
+                resultados.append(res)
+            prog_bar.progress(0.3 + 0.7 * (i+1)/total,
+                text=f"Analizando... {i+1}/{total} — {sym}")
 
         prog_bar.empty()
         resultados.sort(key=lambda x: x['var'], reverse=True)
