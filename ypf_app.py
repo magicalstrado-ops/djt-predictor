@@ -188,6 +188,98 @@ SET_ARG = set(TICKERS_ARG.keys())
 def es_argentino(ticker):
     return ticker.upper() in SET_ARG
 
+# ── SCREENER MULTITICKER ──────────────────────────────────────────────────────
+@st.cache_data(ttl=1800)
+def _macro_screener():
+    """Descarga WTI y SPY una sola vez para todo el screener"""
+    try:
+        wti = yf.download("CL=F", period="1y", progress=False)
+        spy = yf.download("SPY",  period="1y", progress=False)
+        wti.columns = [c[0].lower() if isinstance(c,tuple) else c.lower() for c in wti.columns]
+        spy.columns = [c[0].lower() if isinstance(c,tuple) else c.lower() for c in spy.columns]
+        return wti['close'], spy['close']
+    except:
+        return None, None
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _analizar_ticker_lite(sym):
+    """Modelo LightGBM lite sobre un ticker. Devuelve dict con señal o None."""
+    try:
+        stock = yf.download(sym, period="1y", progress=False)
+        if len(stock) < 80:
+            return None
+        stock.columns = [c[0].lower() if isinstance(c,tuple) else c.lower() for c in stock.columns]
+        wti_s, spy_s = _macro_screener()
+        if wti_s is None:
+            return None
+
+        df = stock[['open','high','low','close','volume']].copy()
+        df['wti'] = wti_s.reindex(df.index).ffill()
+        df['spy'] = spy_s.reindex(df.index).ffill()
+
+        df['EMA12'] = df['close'].ewm(span=12).mean()
+        df['EMA26'] = df['close'].ewm(span=26).mean()
+        df['EMA9']  = df['close'].ewm(span=9).mean()
+        df['MA21']  = df['close'].rolling(21).mean()
+        delta = df['close'].diff()
+        gain  = delta.clip(lower=0).rolling(14).mean()
+        loss  = (-delta.clip(upper=0)).rolling(14).mean()
+        df['RSI'] = 100 - (100/(1+gain/loss))
+        df['MACD_hist'] = (df['EMA12']-df['EMA26']) - (df['EMA12']-df['EMA26']).ewm(span=9).mean()
+        bm = df['close'].rolling(20)
+        df['BB_pos']   = (df['close']-bm.mean()-2*bm.std()) / (4*bm.std()+1e-9)
+        df['BB_width'] = 4*bm.std() / (bm.mean()+1e-9)
+        tr = pd.concat([(df['high']-df['low']),
+                        (df['high']-df['close'].shift()).abs(),
+                        (df['low'] -df['close'].shift()).abs()], axis=1).max(axis=1)
+        df['ATR_pct']      = tr.rolling(14).mean() / (df['close']+1e-9)
+        df['ret_1d']       = df['close'].pct_change()
+        df['ret_3d']       = df['close'].pct_change(3)
+        df['ret_5d']       = df['close'].pct_change(5)
+        df['vol_ratio']    = df['volume'] / (df['volume'].rolling(20).mean()+1e-9)
+        df['momentum_10']  = df['close'] / (df['close'].shift(10)+1e-9) - 1
+        df['volatility_10']= df['ret_1d'].rolling(10).std()
+        df['wti_ret']      = df['wti'].pct_change()
+        df['spy_ret']      = df['spy'].pct_change()
+        df['target']       = df['close'].pct_change(-1)*-1
+        df.dropna(inplace=True)
+
+        if len(df) < 50:
+            return None
+
+        feats = ['MA21','EMA9','RSI','MACD_hist','BB_pos','BB_width','ATR_pct',
+                 'ret_1d','ret_3d','ret_5d','vol_ratio','momentum_10',
+                 'volatility_10','wti_ret','spy_ret']
+        X = df[feats]; y = df['target']
+        split = int(len(X)*0.8)
+        scaler = MinMaxScaler()
+        Xtr_sc = scaler.fit_transform(X[:split])
+        Xte_sc = scaler.transform(X[split:])
+        m = lgb.LGBMRegressor(n_estimators=150, learning_rate=0.08,
+                              num_leaves=20, random_state=42, verbose=-1)
+        m.fit(Xtr_sc, y[:split])
+        mae = mean_absolute_error(y[split:], m.predict(Xte_sc))
+        ret  = float(m.predict(scaler.transform(X.iloc[[-1]]))[0])
+        var  = ret * 100
+        precio  = float(df['close'].iloc[-1])
+        rsi_val = float(df['RSI'].iloc[-1])
+        vol_r   = float(df['vol_ratio'].iloc[-1])
+        ret_5d  = float(df['ret_5d'].iloc[-1])*100
+
+        if   var >  3: senal, clase = "COMPRA FUERTE", "cf"
+        elif var >  0: senal, clase = "COMPRA",        "c"
+        elif var < -3: senal, clase = "VENTA FUERTE",  "vf"
+        else:          senal, clase = "VENTA",         "v"
+
+        return dict(ticker=sym,
+                    nombre=TODOS_TICKERS.get(sym,(sym,''))[0],
+                    sector=TODOS_TICKERS.get(sym,('',''))[1],
+                    precio=precio, var=var, senal=senal, clase=clase,
+                    rsi=rsi_val, vol_ratio=vol_r, ret_5d=ret_5d,
+                    mae_pct=mae*100)
+    except:
+        return None
+
 def buscar_tickers(query):
     if not query or len(query) < 1:
         return []
@@ -549,6 +641,8 @@ with st.sidebar:
     st.markdown("<div style='margin-top:16px;'>", unsafe_allow_html=True)
     if st.button("◈  EJECUTAR ANÁLISIS"):
         st.session_state.correr = True
+    if st.button("⚡  SCREENER GLOBAL"):
+        st.session_state.run_screener = True
     correr = st.session_state.get("correr", False)
     st.markdown("""</div>
     <div style='font-family:JetBrains Mono,monospace;font-size:0.5rem;color:#1a2a3a;letter-spacing:0.08em;margin-top:28px;line-height:2;'>
@@ -583,6 +677,169 @@ with c2: st.markdown(f"<div class='celda-dato'><div class='etiqueta-celda'>USD/A
 with c3: st.markdown(f"<div class='celda-dato'><div class='etiqueta-celda'>Diferencial Compra/Venta</div><div class='valor-celda-med azul'>{spread}</div><div class='sub-celda'>Spread mercado blue</div></div>", unsafe_allow_html=True)
 with c4: st.markdown(f"<div class='celda-dato'><div class='etiqueta-celda'>Última actualización</div><div class='valor-celda-med'>{ahora_str}</div><div class='sub-celda'>Caché automático · 5 min</div></div>", unsafe_allow_html=True)
 st.markdown("<hr class='separador'>", unsafe_allow_html=True)
+
+# ── SCREENER PANEL ───────────────────────────────────────────────────────────
+@st.fragment
+def panel_screener():
+    st.markdown("""
+    <style>
+    .scr-titulo { font-family:'JetBrains Mono',monospace; font-size:0.56rem; color:#3d5a80;
+        letter-spacing:0.3em; text-transform:uppercase; border-left:2px solid #f59e0b;
+        padding-left:10px; margin-bottom:16px; }
+    .scr-tab-act { font-family:'JetBrains Mono',monospace; font-size:0.6rem; letter-spacing:0.15em;
+        background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.4);
+        color:#60a5fa; padding:5px 16px; border-radius:2px; cursor:pointer; }
+    .scr-card { background:#090f1e; border:1px solid #162035; border-radius:3px;
+        padding:10px 14px; margin-bottom:4px; display:flex; align-items:center;
+        gap:10px; transition:background 0.2s; font-family:'JetBrains Mono',monospace; }
+    .scr-rank { font-size:0.58rem; color:#1e3050; min-width:20px; text-align:center; }
+    .scr-ticker { font-size:0.8rem; font-weight:700; color:#60a5fa; min-width:60px; letter-spacing:0.08em; }
+    .scr-nombre { font-size:0.6rem; color:#3d5a80; flex:1; }
+    .scr-precio { font-size:0.72rem; color:#c8d8e8; min-width:70px; text-align:right; }
+    .scr-var  { font-size:0.72rem; font-weight:700; min-width:70px; text-align:right; }
+    .scr-senal-cf { font-size:0.54rem; letter-spacing:0.12em; color:#05d890;
+        background:rgba(5,216,144,0.1); border:1px solid rgba(5,216,144,0.3);
+        padding:3px 10px; border-radius:2px; min-width:110px; text-align:center; }
+    .scr-senal-c  { font-size:0.54rem; letter-spacing:0.12em; color:#34d399;
+        background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.2);
+        padding:3px 10px; border-radius:2px; min-width:110px; text-align:center; }
+    .scr-senal-vf { font-size:0.54rem; letter-spacing:0.12em; color:#f43f5e;
+        background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.3);
+        padding:3px 10px; border-radius:2px; min-width:110px; text-align:center; }
+    .scr-senal-v  { font-size:0.54rem; letter-spacing:0.12em; color:#fb7185;
+        background:rgba(251,113,133,0.08); border:1px solid rgba(251,113,133,0.2);
+        padding:3px 10px; border-radius:2px; min-width:110px; text-align:center; }
+    .scr-rsi { font-size:0.6rem; color:#7b93b8; min-width:50px; text-align:center; }
+    .scr-vol { font-size:0.6rem; color:#3d5a80; min-width:50px; text-align:center; }
+    .scr-hdr { font-family:'JetBrains Mono',monospace; font-size:0.5rem; color:#1e3050;
+        letter-spacing:0.2em; text-transform:uppercase; display:flex;
+        gap:10px; padding:6px 14px; margin-bottom:4px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div class='scr-titulo'>⚡ SCREENER GLOBAL  ·  SEÑALES IA MULTITICKER</div>", unsafe_allow_html=True)
+
+    if "run_screener" not in st.session_state:
+        st.session_state.run_screener = False
+    if "screener_results" not in st.session_state:
+        st.session_state.screener_results = None
+    if "screener_tab" not in st.session_state:
+        st.session_state.screener_tab = "ARG"
+
+    col_btn1, col_btn2, col_btn3, _ = st.columns([1,1,1,3])
+    with col_btn1:
+        if st.button("🇦🇷 ARG", key="scr_tab_arg"):
+            st.session_state.screener_tab = "ARG"
+    with col_btn2:
+        if st.button("🇺🇸 USA", key="scr_tab_usa"):
+            st.session_state.screener_tab = "USA"
+    with col_btn3:
+        ejecutar = st.button("▶ EJECUTAR", key="scr_run")
+
+    tab_actual = st.session_state.screener_tab
+    tickers_a_analizar = list(TICKERS_ARG.keys()) if tab_actual == "ARG" else list(TICKERS_USA.keys())
+
+    if ejecutar or st.session_state.run_screener:
+        st.session_state.run_screener = False
+        prog_bar = st.progress(0, text="Iniciando screener...")
+        resultados = []
+        total = len(tickers_a_analizar)
+
+        import concurrent.futures
+        completados = [0]
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(_analizar_ticker_lite, sym): sym for sym in tickers_a_analizar}
+            for fut in concurrent.futures.as_completed(futures):
+                res = fut.result()
+                if res:
+                    resultados.append(res)
+                completados[0] += 1
+                prog_bar.progress(completados[0]/total,
+                    text=f"Analizando... {completados[0]}/{total} tickers")
+
+        prog_bar.empty()
+        resultados.sort(key=lambda x: x['var'], reverse=True)
+        st.session_state.screener_results = resultados
+
+    if st.session_state.screener_results:
+        res = st.session_state.screener_results
+        compras  = [r for r in res if r['clase'] in ('cf','c')]
+        ventas   = [r for r in res if r['clase'] in ('vf','v')]
+
+        # KPIs
+        k1, k2, k3, k4 = st.columns(4)
+        with k1: st.markdown(f"<div class='celda-dato'><div class='etiqueta-celda'>Total analizados</div><div class='valor-celda-grande'>{len(res)}</div></div>", unsafe_allow_html=True)
+        with k2: st.markdown(f"<div class='celda-dato'><div class='etiqueta-celda'>Señales compra</div><div class='valor-celda-grande' style='color:#05d890;'>{len(compras)}</div></div>", unsafe_allow_html=True)
+        with k3: st.markdown(f"<div class='celda-dato'><div class='etiqueta-celda'>Señales venta</div><div class='valor-celda-grande' style='color:#f43f5e;'>{len(ventas)}</div></div>", unsafe_allow_html=True)
+        with k4:
+            mejor = res[0] if res else None
+            mejor_txt = f"{mejor['ticker']} {mejor['var']:+.2f}%" if mejor else "—"
+            st.markdown(f"<div class='celda-dato'><div class='etiqueta-celda'>Top señal</div><div class='valor-celda-med' style='color:#05d890;'>{mejor_txt}</div></div>", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Tabla
+        col_izq, col_der = st.columns(2)
+        for col, lista, titulo, emoji in [
+            (col_izq, compras,  "MEJORES OPORTUNIDADES", "📈"),
+            (col_der, ventas,   "SEÑALES DE SALIDA",     "📉")
+        ]:
+            with col:
+                st.markdown(f"<div style='font-family:JetBrains Mono,monospace;font-size:0.54rem;letter-spacing:0.2em;color:#3d5a80;margin-bottom:10px;'>{emoji} {titulo}</div>", unsafe_allow_html=True)
+                html_filas = ""
+                for i, r in enumerate(lista, 1):
+                    var_col = "#05d890" if r['var'] > 0 else "#f43f5e"
+                    senal_cls = f"scr-senal-{r['clase']}"
+                    rsi_col = "#f59e0b" if r['rsi'] > 70 or r['rsi'] < 30 else "#3d5a80"
+                    vol_col = "#60a5fa" if r['vol_ratio'] > 1.5 else "#3d5a80"
+                    html_filas += f"""
+                    <div class='scr-card'>
+                        <span class='scr-rank'>#{i}</span>
+                        <span class='scr-ticker'>{r['ticker']}</span>
+                        <span class='scr-nombre'>{r['nombre'][:22]}</span>
+                        <span class='scr-precio'>${r['precio']:.2f}</span>
+                        <span class='scr-var' style='color:{var_col};'>{r['var']:+.2f}%</span>
+                        <span class='{senal_cls}'>{r['senal']}</span>
+                        <span class='scr-rsi' style='color:{rsi_col};'>RSI {r['rsi']:.0f}</span>
+                        <span class='scr-vol' style='color:{vol_col};'>V×{r['vol_ratio']:.1f}</span>
+                    </div>"""
+                if html_filas:
+                    st.markdown(html_filas, unsafe_allow_html=True)
+                else:
+                    st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:0.6rem;color:#1e3050;padding:20px;text-align:center;'>Sin señales en este sentido</div>", unsafe_allow_html=True)
+
+        # Heatmap de momentum
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:0.52rem;color:#3d5a80;letter-spacing:0.2em;text-transform:uppercase;margin-bottom:8px;'>MAPA DE CALOR — PREDICCIÓN IA (%)</div>", unsafe_allow_html=True)
+        tickers_hm = [r['ticker'] for r in res]
+        vars_hm    = [r['var']    for r in res]
+        colors_hm  = ['rgba(5,216,144,0.8)' if v > 0 else 'rgba(244,63,94,0.8)' for v in vars_hm]
+        fig_hm = go.Figure(go.Bar(
+            x=tickers_hm, y=vars_hm,
+            marker_color=colors_hm,
+            text=[f"{v:+.1f}%" for v in vars_hm],
+            textposition='outside',
+            textfont=dict(size=8, family='JetBrains Mono'),
+        ))
+        fig_hm.update_layout(
+            template='plotly_dark', paper_bgcolor='#060d1a', plot_bgcolor='#090f1e',
+            height=200, margin=dict(l=0,r=0,t=10,b=30),
+            font=dict(family='JetBrains Mono', size=9, color='#3d5a80'),
+            xaxis=dict(gridcolor='#0d1626', tickangle=-45),
+            yaxis=dict(gridcolor='#0d1626', zeroline=True, zerolinecolor='#1e3050'),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_hm, use_container_width=True)
+
+        st.markdown(f"<div style='font-family:JetBrains Mono,monospace;font-size:0.5rem;color:#1e3050;text-align:right;margin-top:-10px;'>Modelos entrenados · Caché 30 min · {len(res)} tickers analizados</div>", unsafe_allow_html=True)
+
+    else:
+        st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:0.62rem;color:#1e3050;padding:30px;text-align:center;border:1px solid #0d1626;border-radius:3px;'>Seleccioná ARG o USA y presioná ▶ EJECUTAR para correr el screener sobre todos los tickers</div>", unsafe_allow_html=True)
+
+    st.markdown("<hr class='separador'>", unsafe_allow_html=True)
+
+panel_screener()
 
 # ── ESTADO INACTIVO ───────────────────────────────────────────────────────────
 if not correr:
