@@ -1,5 +1,6 @@
 
 import streamlit as st
+import streamlit.components.v1 as components
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -1128,17 +1129,32 @@ try:
                 <span class='vp-vol'>{vol_fmt}</span>
             </div>"""
 
-        st.markdown(f"""
-        <div class='leyenda-vp'>
-            <span><span class='ley-dot' style='background:#f59e0b;'></span>POC ${poc_precio:.2f}</span>
-            <span><span class='ley-dot' style='background:rgba(5,216,144,0.7);'></span>VAH ${vah_precio:.2f}</span>
-            <span><span class='ley-dot' style='background:rgba(244,63,94,0.7);'></span>VAL ${val_precio:.2f}</span>
-            <span><span class='ley-dot' style='background:rgba(59,130,246,0.5);'></span>Value Area (70% vol)</span>
+        components.html(f"""
+        <style>
+            body {{ margin:0; padding:0; background:#0f1c30; font-family:'JetBrains Mono',monospace; }}
+            .leyenda-vp {{ display:flex; gap:18px; margin-bottom:12px; font-size:0.58rem; color:#3d5a80; flex-wrap:wrap; }}
+            .ley-dot {{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; vertical-align:middle; }}
+            .vp-barra-cont {{ display:flex; align-items:center; gap:8px; margin-bottom:3px; }}
+            .vp-precio {{ font-size:0.62rem; color:#7b93b8; min-width:62px; text-align:right; }}
+            .vp-barra-wrap {{ flex:1; height:12px; background:#0a1423; border-radius:2px; overflow:hidden; }}
+            .vp-barra-fill {{ height:100%; border-radius:2px; }}
+            .vp-vol {{ font-size:0.58rem; color:#3d5a80; min-width:55px; }}
+            .vp-poc {{ border:1px solid #f59e0b !important; background:rgba(245,158,11,0.08) !important; border-radius:2px; }}
+            .vp-vah {{ border:1px solid rgba(5,216,144,0.3) !important; border-radius:2px; }}
+            .vp-val {{ border:1px solid rgba(244,63,94,0.3) !important; border-radius:2px; }}
+        </style>
+        <div style='background:#0f1c30; padding:4px 0;'>
+            <div class='leyenda-vp'>
+                <span><span class='ley-dot' style='background:#f59e0b;'></span>POC ${poc_precio:.2f}</span>
+                <span><span class='ley-dot' style='background:rgba(5,216,144,0.7);'></span>VAH ${vah_precio:.2f}</span>
+                <span><span class='ley-dot' style='background:rgba(244,63,94,0.7);'></span>VAL ${val_precio:.2f}</span>
+                <span><span class='ley-dot' style='background:rgba(59,130,246,0.5);'></span>Value Area (70% vol)</span>
+            </div>
+            <div style='background:#0f1c30;border:1px solid #1e3050;border-radius:3px;padding:12px 16px;max-height:400px;overflow-y:auto;'>
+                {html_vp}
+            </div>
         </div>
-        <div style='background:var(--navy3);border:1px solid var(--border);border-radius:3px;padding:12px 16px;max-height:400px;overflow-y:auto;'>
-            {html_vp}
-        </div>
-        """, unsafe_allow_html=True)
+        """, height=450, scrolling=True)
 
     with vp_col2:
         dist_poc = (precio_hoy - poc_precio) / poc_precio * 100
@@ -1236,7 +1252,24 @@ try:
             </div>"""
 
     sm_filas += "</div>"
-    st.markdown(sm_filas, unsafe_allow_html=True)
+    sm_html_full = f"""
+    <style>
+        body {{ margin:0; padding:0; background:#0a1423; font-family:'JetBrains Mono',monospace; }}
+        .sm-fila {{
+            display:grid; grid-template-columns:90px 70px 80px 80px 80px 1fr;
+            align-items:center; padding:8px 14px;
+            border-bottom:1px solid #162035;
+            font-size:0.7rem; gap:8px;
+        }}
+        .sm-encab {{ font-size:0.5rem; letter-spacing:0.22em; text-transform:uppercase; color:#3d5a80; background:#0a1423; }}
+        .sm-whale {{ color:#f59e0b; font-weight:700; }}
+        .sm-bull  {{ color:#05d890; }}
+        .sm-bear  {{ color:#f43f5e; }}
+    </style>
+    {sm_filas}
+    """
+    n_filas_sm = max(len(whales), 1)
+    components.html(sm_html_full, height=min(60 + n_filas_sm * 42, 520), scrolling=True)
 
     # Gráfico de volumen con marcas de whale
     fig_sm = go.Figure()
